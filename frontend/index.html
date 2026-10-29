@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Festival Flash Sale · Nova X Pro</title>
+  <link rel="preload" href="/app.js" as="script">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="card">
+    <div class="phone" aria-hidden="true"><div class="screen"></div></div>
+
+    <section class="details">
+      <p class="tag">Festival Flash Sale</p>
+      <h1>Nova X Pro 5G</h1>
+      <p class="specs">6.7" AMOLED · 256 GB · 50 MP camera</p>
+
+      <p class="price"><span class="now">₹49,999</span> <s>₹79,999</s></p>
+
+      <div id="countdown" class="countdown">
+        <span class="label">Sale starts in</span>
+        <span id="timer" class="timer">--:--:--</span>
+      </div>
+
+      <p id="stock" class="stock" hidden></p>
+
+      <button id="buy" class="buy" disabled>Loading…</button>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

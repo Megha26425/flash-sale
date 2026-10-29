@@ -1,0 +1,153 @@
+:root {
+  --bg: #f4f1ec;
+  --card: #ffffff;
+  --text: #1c1b19;
+  --muted: #6d6a64;
+  --accent: #e4572e;
+  --ok: #2f8f5b;
+  --line: #e6e1d8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.card {
+  width: 100%;
+  max-width: 820px;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 40px;
+  padding: 40px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+.phone {
+  width: 200px;
+  height: 400px;
+  margin: auto;
+  padding: 10px;
+  border-radius: 36px;
+  background: #222;
+}
+
+.screen {
+  height: 100%;
+  border-radius: 28px;
+  background: linear-gradient(160deg, #ff9a5a, var(--accent) 45%, #6b2bd9);
+}
+
+.tag {
+  margin: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 4px 0;
+  font-size: 32px;
+  line-height: 1.15;
+}
+
+.specs {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.price {
+  margin: 0 0 24px;
+}
+
+.price .now {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.price s {
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.countdown {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.countdown .label {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.timer {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock {
+  margin: 0 0 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.buy {
+  width: 100%;
+  padding: 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.buy:disabled {
+  background: #c9c3b8;
+  cursor: not-allowed;
+}
+
+.buy.done {
+  background: var(--ok);
+}
+
+.message {
+  min-height: 1.5em;
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+
+.message.ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.message.bad {
+  color: var(--accent);
+}
