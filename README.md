@@ -1,92 +1,120 @@
-# Flash Sale Checkout
+# Flash Sale Checkout System
 
-500 phones, 100k people hitting **Buy** at 8:00 PM, and exactly 500 orders at the end.
+This project simulates an e-commerce flash sale where 500 phones are available and a large number of users try to buy them at the same time.
 
+The main goal is to handle a sudden increase in checkout requests without overselling the available stock. Even if thousands of users click the Buy button together, the system should allow only valid reservations and ensure that no more than 500 orders are confirmed.
+
+## Architecture
+
+The system uses FastAPI for handling checkout requests, Redis for managing stock reservations, RabbitMQ for queuing requests, and MySQL for storing confirmed orders.
+
+```text
+Browser -> NGINX -> FastAPI (3 instances)
+                       |
+                       v
+                     Redis
+                  Stock checks
+                       |
+                       v
+                    RabbitMQ
+                       |
+                       v
+                Checkout Workers (2)
+                       |
+                       v
+                     MySQL
 ```
-Browser ──► NGINX ──► FastAPI (x3) ──► Redis      "is there stock left?" (atomic Lua)
-            rate limit                └─► RabbitMQ ──► Worker (x2) ──► MySQL
-            bot filter                                  writes the real order
-            static files + cache
-```
 
-## Run it
+NGINX handles incoming traffic, applies rate limits, and distributes requests across the API instances. Redis checks and reserves stock, while RabbitMQ holds checkout requests until a worker can process them. MySQL stores the final order records.
+
+## How checkout works
+
+1. The user opens the product page and clicks the Buy button. The frontend disables the button after the first click to avoid sending repeated requests from the same interaction.
+2. NGINX applies rate limits and forwards requests to one of the FastAPI instances.
+3. The API checks Redis to see whether the user already has a reservation and whether stock is available. The stock reservation is handled atomically so that multiple requests cannot reserve the same remaining unit.
+4. If stock is available, the reservation is created and the checkout request is sent to RabbitMQ. The API returns a `202 Accepted` response while the order is being processed.
+5. A worker consumes the message and uses a MySQL transaction to update inventory and insert the order. Database constraints provide an additional layer of protection against duplicate orders and negative stock.
+6. After processing, the worker updates the checkout status in Redis. The frontend polls the status endpoint to check whether the order has been confirmed or marked as sold out.
+
+Requests that arrive after all 500 units have been reserved should receive a sold-out response without creating an additional reservation.
+
+## Technologies used
+
+- **FastAPI:** Checkout API and order status endpoints.
+- **Redis:** Fast stock checks and atomic reservations.
+- **RabbitMQ:** Queue for processing checkout requests asynchronously.
+- **MySQL:** Persistent inventory and order records.
+- **NGINX:** Load balancing, rate limiting, bot filtering, and static file delivery.
+- **Docker Compose:** Runs the services together.
+- **HTML, CSS and JavaScript:** Product page, countdown, and Buy button.
+
+## Project structure
+
+
+ `backend/main.py` 
+ `backend/stock.py` 
+ `backend/worker.py` 
+ `backend/db.py` 
+ `backend/schema.sql` 
+ `backend/reset_sale.py`
+ `backend/load_test.py`
+ `frontend/` 
+ `nginx/nginx.conf` 
+ `docker-compose.yml` 
+
+## Running the project
+
+Make sure Docker Desktop is running, then open a terminal in the project directory.
+
+Create the environment file:
 
 ```bash
-cp .env.example .env          # set SALE_START, or leave it empty to open the sale now
+cp .env.example .env
+```
+
+Configure the required environment variables, including the sale start time if needed. Leave `SALE_START` empty to open the sale immediately, as supported by the application.
+
+Start the services:
+
+```bash
 docker compose up --build
 ```
 
-- Shop: http://localhost:8080
-- RabbitMQ dashboard: http://localhost:15672 (guest / guest)
+Open the following URLs:
 
-Load test (fires 5,000 buyers who each click 3 times, then checks MySQL):
+- Shop: http://localhost:8080
+- RabbitMQ dashboard: http://localhost:15672
+
+The RabbitMQ dashboard uses `guest` / `guest` with the default local configuration.
+
+## Testing
+
+Before running the load test, reset the sale data:
 
 ```bash
 docker compose exec api python reset_sale.py
+```
+
+Simulate 5,000 users, with each user attempting to click Buy three times:
+
+```bash
 docker compose exec api python load_test.py --users 5000
 ```
 
-Unit tests (need Redis + MySQL up; they wipe the sale data):
+The load test checks the checkout results and verifies that the system does not oversell the 500 available units.
+
+To run the automated tests:
 
 ```bash
 docker compose exec api pytest
 ```
 
-## How a click flows
+**Note:** The reset script and tests modify or clear sale data, so use them only in the development environment.
 
-1. **Browser** locks the button on the first click, so only one request goes out.
-2. **NGINX** drops scripts (5 checkout requests/sec per IP, obvious bot user agents get 403) and spreads the rest across the API replicas.
-3. **API** runs one Lua script in Redis: if the user already has a reservation, return it. If stock is 0, return `SOLD_OUT`. Otherwise decrement and mark the user `PENDING`. Redis runs the script atomically, so only 500 people can ever get past this point. The other 99,500 get an answer straight from memory and never touch MySQL.
-4. Winners get put on a durable RabbitMQ queue, and the API replies **202 Accepted** right away.
-5. **Worker** takes each message and runs one MySQL transaction:
-   `UPDATE inventory SET available_stock = available_stock - 1 WHERE product_id = ? AND available_stock > 0`, then inserts the order.
-   A `UNIQUE (product_id, user_id)` key and a `CHECK (available_stock >= 0)` back this up at the database level.
-6. The worker writes `CONFIRMED` back to Redis. The browser has been polling `/api/checkout/{user_id}` and shows it.
+## Known issue
 
-## Files
+There is currently a bug in the frontend stock display. Even after the available stock reaches zero, the product page can continue showing **"500 left"**.
 
-| | |
-|---|---|
-| `backend/main.py` | API: sale info, checkout, order status |
-| `backend/stock.py` | Redis Lua scripts (reserve / release) |
-| `backend/worker.py` | Queue consumer, writes orders to MySQL |
-| `backend/db.py` | The order transaction |
-| `backend/schema.sql` | Tables + the 500-unit product |
-| `backend/reset_sale.py` | Reset stock to 500 (dev only) |
-| `backend/load_test.py` | Crowd simulation + overselling check |
-| `frontend/` | Product page, countdown, buy button. Plain JS, ~8 KB total |
-| `nginx/nginx.conf` | Load balancing, rate limits, caching |
+The backend stock reservation logic and the frontend stock display are not staying in sync. The frontend needs to fetch and display the latest stock information instead of continuing to show the initial value. This needs to be fixed and tested during the next round of development.
 
-## Design notes (interview talking points)
 
-**Why was it overselling before?** The usual pattern is `SELECT stock` → check `> 0` in code → `UPDATE stock = stock - 1`. Two requests can both read `1` before either writes, and both sell. Under 100k requests that gap gets hit constantly. Here the check and the decrement are always one step: one Lua script in Redis, one conditional `UPDATE` in MySQL.
-
-**Why Redis in front of MySQL?** Even a correct SQL update holds a row lock, and 100k transactions queueing on the same inventory row is exactly what caused the lock timeouts. Redis is single-threaded and in memory, so it takes the spike, and MySQL only ever sees about 500 writes.
-
-**Pessimistic vs optimistic locking.** Pessimistic (`SELECT ... FOR UPDATE`) is correct but makes everyone wait in line on one row. Optimistic (version column, retry on conflict) means almost every retry fails when everyone wants the same row. A conditional atomic decrement avoids both: no explicit lock, no retry loop, and the `WHERE available_stock > 0` makes it impossible to go negative.
-
-**Idempotency.** One phone per user. Repeat clicks, browser retries and duplicate queue deliveries all land on the same Redis entry or the same unique key in MySQL, so nothing gets bought twice. That's why it's safe for the frontend to retry automatically.
-
-**Failure handling.**
-- RabbitMQ down when publishing: the reservation is released and the client gets `503 TRY_AGAIN`.
-- Redis busy: `503 TRY_AGAIN`, and nothing was reserved.
-- Worker crashes mid-order: the message was never acked, so RabbitMQ redelivers it.
-- Workers down entirely: orders wait in the queue and the API keeps working.
-
-**Polling vs WebSockets.** Sale status is a single number that's the same for everyone, so the page polls it every 4 seconds and NGINX caches it for 1 second. 100k polls then cost about one backend call per second. Holding 100k WebSockets open would cost far more for no real gain. Order status is polled with backoff (1s → 5s) and only by people who actually got a reservation.
-
-**Frontend.** No framework, so the whole page is ~8 KB and becomes interactive almost immediately. Static files get long cache headers. In production they'd sit on a CDN, so the servers only handle API calls. The countdown uses the server's clock, so a user with a wrong PC clock can't get a head start.
-
-## Tested
-
-On a 2-core machine with two API instances and two workers:
-- 30,000 checkout requests from 5,000 users hitting both instances at once: **500 orders, 500 distinct buyers, 0 stock left**, no errors.
-- Workers stopped during the sale: the API kept answering (~1,200 req/s), orders queued up, and once a worker started there were exactly 500 orders.
-- Triple-clicking Buy in a real browser sends one request.
-
-## What I'd add for real production
-
-- Real login. Right now the browser makes a random user id, so a bot could invent new ids. NGINX limits per IP, but a login or CAPTCHA at checkout would close that gap.
-- Payment step and a timeout that releases unpaid reservations.
-- Redis Sentinel/Cluster and a RabbitMQ cluster instead of single nodes.
-- After scaling `api` replicas, restart NGINX so it picks up the new containers.
